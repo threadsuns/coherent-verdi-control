@@ -91,12 +91,10 @@ def dashboard_data(service: Monitor) -> dict[str, Any]:
 
 
 def create_app(service: Monitor) -> Any:
-    """Caller owns service lifecycle. Does not connect, start threads or send commands.
+    """Caller owns service lifecycle. Does not connect, start threads or send commands."""
+    from dash import Dash, Input, Output, ctx, dcc, html
 
-    Monitoring-only by design. Use the API for authorized operations. Serve on
-    loopback or behind your lab's authenticated proxy; do not use debug/reloader.
-    """
-    from dash import Dash, Input, Output, dcc, html
+    laser = service._controller
 
     app = Dash(__name__, assets_folder=str(Path(__file__).with_name("assets")))
     app.title = "Verdi | Telemetry"
@@ -141,6 +139,24 @@ def create_app(service: Monitor) -> Any:
                 ],
                 className="tiles",
             ),
+            html.Div(
+                [
+                    html.Label("Requested power setpoint (W)", htmlFor="power-setpoint-input"),
+                    dcc.Input(
+                        id="power-setpoint-input",
+                        type="number",
+                        step="any",
+                        placeholder="Enter power",
+                    ),
+                    html.Button(
+                        "Apply setpoint",
+                        id="apply-power-setpoint",
+                        n_clicks=0,
+                    ),
+                    html.Div(id="power-setpoint-result", role="status"),
+                ],
+                className="setpoint-controls",
+            ),
             html.Section(
                 [
                     html.H2("Power history"),
@@ -155,7 +171,19 @@ def create_app(service: Monitor) -> Any:
                         className="panel",
                     ),
                     html.Div(
-                        [html.H2("Instrument status"), html.Div(id="instrument")], className="panel"
+                        [html.H2("Instrument status"), html.Div(id="instrument")],
+                        className="panel",
+                    ),
+                    html.Div(
+                        [
+                            html.H2("Laser controls"),
+                            html.Button("Start", id="laser-start", n_clicks=0),
+                            html.Button("Open shutter", id="shutter-open", n_clicks=0),
+                            html.Button("Close shutter", id="shutter-close", n_clicks=0),
+                            html.Button("Stop", id="laser-stop", n_clicks=0),
+                            html.Div(id="control-result", role="status"),
+                        ],
+                        className="panel",
                     ),
                 ],
                 className="lower",
@@ -258,5 +286,50 @@ def create_app(service: Monitor) -> Any:
             _tick,
             _source_label(data["simulated"]),
         )
+
+    @app.callback(
+        Output("power-setpoint-result", "children"),
+        Input("apply-power-setpoint", "n_clicks"),
+        State("power-setpoint-input", "value"),
+        prevent_initial_call=True,
+    )
+    def apply_power_setpoint(_clicks: int, value: object) -> str:
+        try:
+            laser.set_power_w(value)
+        except (ValueError, OSError) as exc:
+            return f"Rejected / failed: {exc}"
+        return "Setpoint request completed; monitor readback will show the reported value."
+
+    @app.callback(
+        Output("control-result", "children"),
+        Input("laser-start", "n_clicks"),
+        Input("shutter-open", "n_clicks"),
+        Input("shutter-close", "n_clicks"),
+        Input("laser-stop", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def apply_control(
+        _start_clicks: int,
+        _open_clicks: int,
+        _close_clicks: int,
+        _stop_clicks: int,
+    ) -> str:
+        try:
+            if ctx.triggered_id == "laser-start":
+                laser.start()
+                return "Laser start command completed."
+            if ctx.triggered_id == "shutter-open":
+                laser.set_shutter(open=True)
+                return "Shutter open command completed."
+            if ctx.triggered_id == "shutter-close":
+                laser.set_shutter(open=False)
+                return "Shutter close command completed."
+            if ctx.triggered_id == "laser-stop":
+                laser.stop()
+                return "Laser stop command completed."
+        except Exception as exc:
+            return f"Command failed: {exc}"
+
+        return "No control command selected."
 
     return app
