@@ -19,7 +19,7 @@ class SimulatedVerdi(VerdiController):
         self,
         model: str = "V5",
         *,
-        allow_writes: bool = False,
+        allow_writes: bool = True,
         power_limit_w: float | None = None,
         clock: Callable[[], float] = monotonic,
         warmup_s: float = 0.0,
