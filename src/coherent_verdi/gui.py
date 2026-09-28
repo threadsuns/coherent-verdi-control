@@ -10,8 +10,7 @@ from time import monotonic
 from typing import Any
 
 from dash import Dash, Input, Output, State, dcc, html
-from math import asin, degrees, sqrt
-
+from math import asin, sqrt, degrees
 from .controller import VerdiController, finite_range
 
 
@@ -93,11 +92,7 @@ def dashboard_data(service: Monitor) -> dict[str, Any]:
     }
 
 
-def create_app(service: Monitor,
-               stage: Any,
-    *,
-    waveplate_reference_deg: float
-    ) -> Any:
+def create_app(service: Monitor) -> Any:
     """Caller owns service lifecycle. Does not connect, start threads or send commands."""
     from dash import Dash, Input, Output, ctx, dcc, html
 
@@ -146,56 +141,39 @@ def create_app(service: Monitor,
                 ],
                 className="tiles",
             ),
+            
             html.Div(
-                [
-                    html.Label("Requested power setpoint (W)", htmlFor="power-setpoint-input"),
-                    dcc.Input(
-                        id="power-setpoint-input",
-                        type="number",
-                        step="any",
-                        placeholder="Enter power",
-                    ),
-                    html.Button(
-                        "Apply setpoint",
-                        id="apply-power-setpoint",
-                        n_clicks=0,
-                    ),
-                    html.Div(id="power-setpoint-result", role="status"),
-                ],
-                className="setpoint-controls",
-            ),
-            html.Div(
-                [
-                    html.Label("Requested power setpoint (W)", htmlFor="power-setpoint-input"),
-                    dcc.Input(
-                        id="power-setpoint-input",
-                        type="number",
-                        step="any",
-                        placeholder="Enter power",
-                    ),
-                    html.Button("Apply setpoint", id="apply-power-setpoint", n_clicks=0),
-                    html.Div(id="power-setpoint-result", role="status"),
-                    html.Hr(),
-                    html.Label(
-                        "Requested enclosure output power (W)",
-                        htmlFor="enclosure-power-input",
-                    ),
-                    dcc.Input(
-                        id="enclosure-power-input",
-                        type="number",
-                        min=0,
-                        step="any",
-                        placeholder="Enter enclosure power",
-                    ),
-                    html.Button(
-                        "Apply enclosure power",
-                        id="apply-enclosure-power",
-                        n_clicks=0,
-                    ),
-                    html.Div(id="enclosure-power-result", role="status"),
-                ],
-                className="setpoint-controls",
-            ),
+                            [
+                                html.Label("Requested power setpoint (W)", htmlFor="power-setpoint-input"),
+                                dcc.Input(
+                                    id="power-setpoint-input",
+                                    type="number",
+                                    step="any",
+                                    placeholder="Enter power",
+                                ),
+                                html.Button("Apply setpoint", id="apply-power-setpoint", n_clicks=0),
+                                html.Div(id="power-setpoint-result", role="status"),
+                                html.Hr(),
+                                html.Label(
+                                    "Requested enclosure output power (W)",
+                                    htmlFor="enclosure-power-input",
+                                ),
+                                dcc.Input(
+                                    id="enclosure-power-input",
+                                    type="number",
+                                    min=0,
+                                    step="any",
+                                    placeholder="Enter enclosure power",
+                                ),
+                                html.Button(
+                                    "Apply enclosure power",
+                                    id="apply-enclosure-power",
+                                    n_clicks=0,
+                                ),
+                                html.Div(id="enclosure-power-result", role="status"),
+                            ],
+                            className="setpoint-controls",
+                        ),
             html.Section(
                 [
                     html.H2("Power history"),
@@ -248,10 +226,7 @@ def create_app(service: Monitor,
         Output("server-heartbeat", "children"),
         Output("source", "children"),
         Input("refresh", "n_intervals"),
-        Output("enclosure-power-result", "children"),
-        Input("apply-enclosure-power", "n_clicks"),
-        State("enclosure-power-input", "value"),
-        prevent_initial_call=True,
+        
     )
     def refresh(_tick: int) -> tuple[Any, ...]:
         data = dashboard_data(service)
@@ -344,6 +319,44 @@ def create_app(service: Monitor,
         return "Setpoint request completed; monitor readback will show the reported value."
 
     @app.callback(
+        Output("enclosure-power-result", "children"),
+        Input("apply-enclosure-power", "n_clicks"),
+        State("enclosure-power-input", "value"),
+        prevent_initial_call=True,
+    )
+    def apply_enclosure_power(_clicks: int, value: object) -> str:
+        snapshot = service.snapshot()
+        samples = snapshot["history"]
+        sample = samples[-1] if samples else None
+        status = sample["status"] if sample else None
+        age_s = snapshot["age_s"]
+
+        if status is None or age_s is None:
+            return "Cannot set enclosure power: no valid laser-head power reading."
+        if age_s > max(5.0, 3 * snapshot["interval_s"] + 2 * status["duration_s"]):
+            return "Cannot set enclosure power: laser-head power reading is stale."
+
+        try:
+            head_power_w = finite_range(
+                status["power_w"], 0, float("inf"), "measured head power"
+            )
+            target_w = finite_range(value, 0, head_power_w, "enclosure power")
+        except (TypeError, ValueError) as exc:
+            return f"Rejected: {exc}"
+
+        if head_power_w <= 0:
+            return "Cannot set enclosure power: measured head power must be above zero."
+
+        # P(theta) / P(0) = sin²(2 theta), for theta in the 0–45° branch.
+        ratio = target_w / head_power_w
+        theta_deg = degrees(asin(sqrt(ratio))) / 2
+
+        return (
+            f"Stage angle: {theta_deg:.2f}° "
+            f"(requested enclosure power {target_w:.3f} W)."
+        )
+
+    @app.callback(
         Output("control-result", "children"),
         Input("laser-start", "n_clicks"),
         Input("shutter-open", "n_clicks"),
@@ -376,42 +389,36 @@ def create_app(service: Monitor,
         return "No control command selected."
 
     def apply_enclosure_power(_clicks: int, value: object) -> str:
-        snapshot = service.snapshot()
-        samples = snapshot["history"]
-        sample = samples[-1] if samples else None
-        status = sample["status"] if sample else None
-        age_s = snapshot["age_s"]
-
-        if status is None or age_s is None:
-            return "Cannot set enclosure power: no valid laser-head power reading."
-        if age_s > max(5.0, 3 * snapshot["interval_s"] + 2 * status["duration_s"]):
-            return "Cannot set enclosure power: laser-head power reading is stale."
-
-        try:
-            head_power_w = finite_range(
-                status["power_w"], 0, float("inf"), "measured head power"
+            snapshot = service.snapshot()
+            samples = snapshot["history"]
+            sample = samples[-1] if samples else None
+            status = sample["status"] if sample else None
+            age_s = snapshot["age_s"]
+    
+            if status is None or age_s is None:
+                return "Cannot set enclosure power: no valid laser-head power reading."
+            if age_s > max(5.0, 3 * snapshot["interval_s"] + 2 * status["duration_s"]):
+                return "Cannot set enclosure power: laser-head power reading is stale."
+    
+            try:
+                head_power_w = finite_range(
+                    status["power_w"], 0, float("inf"), "measured head power"
+                )
+                target_w = finite_range(value, 0, head_power_w, "enclosure power")
+            except (TypeError, ValueError) as exc:
+                return f"Rejected: {exc}"
+    
+            if head_power_w <= 0:
+                return "Cannot set enclosure power: measured head power must be above zero."
+    
+             # P(theta) / P(0) = sin²(2 theta), for theta in the 0–45° branch.
+            ratio = target_w / head_power_w
+            theta_deg = degrees(asin(sqrt(ratio))) / 2
+    
+            return (
+                f"Stage commanded to {theta_deg:.2f}° "
+                f"(requested enclosure power {target_w:.3f} W)."
             )
-            target_w = finite_range(value, 0, head_power_w, "enclosure power")
-        except (TypeError, ValueError) as exc:
-            return f"Rejected: {exc}"
-
-        if head_power_w <= 0:
-            return "Cannot set enclosure power: measured head power must be above zero."
-
-         # P(theta) / P(0) = sin²(2 theta), for theta in the 0–45° branch.
-        ratio = target_w / head_power_w
-        theta_deg = degrees(asin(sqrt(ratio))) / 2
-        target_angle_deg = waveplate_reference_deg + theta_deg
-
-        try:
-            stage.move_to_position(target_angle_deg)
-        except Exception as exc:
-            return f"Stage move failed: {exc}"
-
-        return (
-            f"Stage commanded to {target_angle_deg:.2f}° "
-            f"(requested enclosure power {target_w:.3f} W)."
-        )
-
+    
 
     return app
