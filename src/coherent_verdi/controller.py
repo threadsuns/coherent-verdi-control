@@ -186,7 +186,7 @@ class VerdiController:
         model: str = "V5",
         baudrate: int = 19200,
         timeout_s: float = 1.0,
-        allow_writes: bool = False,
+        allow_writes: bool = True,
         power_limit_w: float | None = None,
         active_fault_clear_reply: str | None = None,
     ) -> None:
