@@ -36,34 +36,41 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
 
             from .gui import Monitor, create_app
-            from .k10cr2_driver import K10CR2
+      
+
+            if args.command == "watch":
+                if not 1 <= args.count <= 100000:
+                    raise ValueError("count must be in [1, 100000]")
+                monitor = Monitor(laser, interval_s=args.interval)
+                failed = False
+                for i in range(args.count):
+                    sample = monitor.poll_once()
+                    failed |= sample["status"] is None
+                    print(json.dumps(sample, allow_nan=False), flush=True)
+                    if i + 1 < args.count:
+                        sleep(monitor.interval_s)
+                return 2 if failed else 0
+
+            if not 1 <= args.port <= 65535:
+                raise ValueError("HTTP port must be in [1, 65535]")
+            from threading import Event, Thread
 
             monitor = Monitor(laser)
-            with K10CR2("55543994") as stage:  # use your stage's serial number
-                app = create_app(
-                    monitor,
-                    stage,
-                    waveplate_reference_deg=YOUR_CALIBRATED_REFERENCE_DEG,
-                )
-                stop = Event()
+            app = create_app(monitor)
+            stop = Event()
 
-                def poll() -> None:
-                    while not stop.is_set():
-                        monitor.poll_once()
-                        stop.wait(monitor.interval_s)
+            def poll() -> None:
+                while not stop.is_set():
+                    monitor.poll_once()
+                    stop.wait(monitor.interval_s)
 
-                worker = Thread(target=poll, name="verdi-monitor")
-                worker.start()
-                try:
-                    app.run(
-                        host="127.0.0.1",
-                        port=args.port,
-                        debug=False,
-                        use_reloader=False,
-                    )
-                finally:
-                    stop.set()
-                    worker.join()  # Drain acquisition before disconnect, including Ctrl+C.
+            worker = Thread(target=poll, name="verdi-monitor")
+            worker.start()
+            try:
+                app.run(host="127.0.0.1", port=args.port, debug=False, use_reloader=False)
+            finally:
+                stop.set()
+                worker.join()  # Drain acquisition before disconnect, including Ctrl+C.
         return 0
     except KeyboardInterrupt:
         return 130
