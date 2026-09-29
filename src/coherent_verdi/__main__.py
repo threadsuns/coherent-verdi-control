@@ -36,6 +36,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
 
             from .gui import Monitor, create_app
+      
 
             if args.command == "watch":
                 if not 1 <= args.count <= 100000:

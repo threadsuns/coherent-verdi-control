@@ -10,7 +10,7 @@ from time import monotonic
 from typing import Any
 
 from dash import Dash, Input, Output, State, dcc, html
-
+from math import asin, sqrt, degrees
 from .controller import VerdiController, finite_range
 
 
@@ -143,21 +143,128 @@ def create_app(service: Monitor) -> Any:
             ),
             html.Div(
                 [
-                    html.Label("Requested power setpoint (W)", htmlFor="power-setpoint-input"),
-                    dcc.Input(
-                        id="power-setpoint-input",
-                        type="number",
-                        step="any",
-                        placeholder="Enter power",
+                    html.Div(
+                        [
+                            html.Label(
+                                "Requested power setpoint (W)",
+                                htmlFor="power-setpoint-input",
+                                style={"display": "block", "marginBottom": "0.5rem"},
+                            ),
+                            dcc.Input(
+                                id="power-setpoint-input",
+                                type="number",
+                                step="any",
+                                placeholder="Enter power",
+                                style={
+                                    "marginTop": "0.75rem",
+                                    "width": "100%",
+                                    "minWidth": "180px",
+                                    "maxWidth": "260px",
+                                    "minHeight": '50px',
+                                    "padding": "0.8rem 0.9rem",
+                                    "fontSize": "1rem",
+                                    "lineHeight": "1.4",
+                                    "borderRadius": "10px",
+                                    "border": "1px solid #3d4d61",
+                                    "backgroundColor": "#0f1725",
+                                    "color": "#edf4ff",
+                                },
+                            ),
+                            html.Button(
+                                "Apply setpoint",
+                                id="apply-power-setpoint",
+                                n_clicks=0,
+                                style={
+                                    "marginTop": "0.75rem",
+                                    "padding": "0.8rem 1rem",
+                                    "fontSize": "0.96rem",
+                                    "fontWeight": "600",
+                                    "borderRadius": "10px",
+                                    "border": "1px solid #516f95",
+                                    "backgroundColor": "#1f4870",
+                                    "color": "#edf4ff",
+                                    "cursor": "pointer",
+                                },
+                            ),
+                            html.Div(
+                                id="power-setpoint-result",
+                                role="status",
+                                style={"marginTop": "0.75rem", "fontSize": "0.95rem"},
+                            ),
+                        ],
+                        style={
+                            "flex": "1 1 280px",
+                            "minWidth": "220px",
+                            "padding": "0.25rem 0",
+                        },
                     ),
-                    html.Button(
-                        "Apply setpoint",
-                        id="apply-power-setpoint",
-                        n_clicks=0,
+                    html.Div(
+                        [
+                            html.Label(
+                                "Requested enclosure output power (W)",
+                                htmlFor="enclosure-power-input",
+                                style={"display": "block", "marginBottom": "0.5rem"},
+                            ),
+                            dcc.Input(
+                                id="enclosure-power-input",
+                                type="number",
+                                min=0,
+                                step="any",
+                                placeholder="Enter enclosure power",
+                                style={
+                                    "width": "100%",
+                                    "minWidth": "180px",
+                                    "maxWidth": "260px",
+                                    "minHeight": '50px',
+                                    "padding": "0.8rem 0.9rem",
+                                    "fontSize": "1rem",
+                                    "lineHeight": "1.4",
+                                    "borderRadius": "10px",
+                                    "border": "1px solid #3d4d61",
+                                    "backgroundColor": "#0f1725",
+                                    "color": "#edf4ff",
+                                },
+                            ),
+                            html.Button(
+                                "Apply enclosure power",
+                                id="apply-enclosure-power",
+                                n_clicks=0,
+                                style={
+                                    "marginTop": "0.75rem",
+                                    "padding": "0.8rem 1rem",
+                                    "fontSize": "0.96rem",
+                                    "fontWeight": "600",
+                                    "borderRadius": "10px",
+                                    "border": "1px solid #516f95",
+                                    "backgroundColor": "#1f4870",
+                                    "color": "#edf4ff",
+                                    "cursor": "pointer",
+                                },
+                            ),
+                            html.Div(
+                                id="enclosure-power-result",
+                                role="status",
+                                style={"marginTop": "0.75rem", "fontSize": "0.95rem"},
+                            ),
+                        ],
+                        style={
+                            "flex": "1 1 280px",
+                            "minWidth": "220px",
+                            "padding": "0.25rem 0",
+                        },
                     ),
-                    html.Div(id="power-setpoint-result", role="status"),
                 ],
                 className="setpoint-controls",
+                style={
+                    "display": "flex",
+                    "flexWrap": "wrap",
+                    "gap": "1.25rem",
+                    "padding": "1.1rem 1.2rem",
+                    "borderRadius": "14px",
+                    "backgroundColor": "#111c2a",
+                    "border": "1px solid #263548",
+                    "boxShadow": "inset 0 1px 0 rgba(255,255,255,0.03)",
+                },
             ),
             html.Section(
                 [
@@ -166,29 +273,112 @@ def create_app(service: Monitor) -> Any:
                 ],
                 className="panel",
             ),
-            html.Section(
+            html.Div(
                 [
                     html.Div(
                         [html.H2("Thermal diagnostics"), html.Div(id="temperatures")],
                         className="panel",
+                        style={"flex": "1 1 360px", "minWidth": "260px"},
                     ),
                     html.Div(
                         [html.H2("Instrument status"), html.Div(id="instrument")],
                         className="panel",
+                        style={"flex": "1 1 320px", "minWidth": "260px"},
                     ),
                     html.Div(
                         [
                             html.H2("Laser controls"),
-                            html.Button("Start", id="laser-start", n_clicks=0),
-                            html.Button("Open shutter", id="shutter-open", n_clicks=0),
-                            html.Button("Close shutter", id="shutter-close", n_clicks=0),
-                            html.Button("Stop", id="laser-stop", n_clicks=0),
-                            html.Div(id="control-result", role="status"),
+                            html.Div(
+                                [
+                                    html.Button(
+                                        "Start",
+                                        id="laser-start",
+                                        n_clicks=0,
+                                        style={
+                                            "padding": "0.7rem 1rem",
+                                            "fontSize": "0.95rem",
+                                            "fontWeight": "600",
+                                            "borderRadius": "10px",
+                                            "border": "1px solid #516f95",
+                                            "backgroundColor": "#1d8f6f",
+                                            "color": "#edf4ff",
+                                            "cursor": "pointer",
+                                            "width": "100%",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Open shutter",
+                                        id="shutter-open",
+                                        n_clicks=0,
+                                        style={
+                                            "padding": "0.7rem 1rem",
+                                            "fontSize": "0.95rem",
+                                            "fontWeight": "600",
+                                            "borderRadius": "10px",
+                                            "border": "1px solid #516f95",
+                                            "backgroundColor": "#2f5b7c",
+                                            "color": "#edf4ff",
+                                            "cursor": "pointer",
+                                            "width": "100%",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Close shutter",
+                                        id="shutter-close",
+                                        n_clicks=0,
+                                        style={
+                                            "padding": "0.7rem 1rem",
+                                            "fontSize": "0.95rem",
+                                            "fontWeight": "600",
+                                            "borderRadius": "10px",
+                                            "border": "1px solid #516f95",
+                                            "backgroundColor": "#3f5874",
+                                            "color": "#edf4ff",
+                                            "cursor": "pointer",
+                                            "width": "100%",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Stop",
+                                        id="laser-stop",
+                                        n_clicks=0,
+                                        style={
+                                            "padding": "0.7rem 1rem",
+                                            "fontSize": "0.95rem",
+                                            "fontWeight": "600",
+                                            "borderRadius": "10px",
+                                            "border": "1px solid #516f95",
+                                            "backgroundColor": "#7c2d2d",
+                                            "color": "#edf4ff",
+                                            "cursor": "pointer",
+                                            "width": "100%",
+                                        },
+                                    ),
+                                ],
+                                style={
+                                    "display": "flex",
+                                    "flexDirection": "column",
+                                    "gap": "0.75rem",
+                                    "marginTop": "0.75rem",
+                                },
+                            ),
+                            html.Div(
+                                id="control-result",
+                                role="status",
+                                style={"marginTop": "0.75rem", "fontSize": "0.95rem"},
+                            ),
                         ],
                         className="panel",
+                        style={"flex": "0 1 260px", "minWidth": "220px"},
                     ),
                 ],
-                className="lower",
+                style={
+                    "display": "flex",
+                    "flexWrap": "wrap",
+                    "gap": "1rem",
+                    "alignItems": "stretch",
+                    "marginTop": "1rem",
+                },
             ),
             html.Footer("Monitoring only · physical behavior untested"),
             dcc.Interval(id="refresh", interval=1000, n_intervals=0),
@@ -211,6 +401,7 @@ def create_app(service: Monitor) -> Any:
         Output("server-heartbeat", "children"),
         Output("source", "children"),
         Input("refresh", "n_intervals"),
+        
     )
     def refresh(_tick: int) -> tuple[Any, ...]:
         data = dashboard_data(service)
@@ -302,6 +493,53 @@ def create_app(service: Monitor) -> Any:
             return f"Rejected / failed: {exc}"
         return "Setpoint request completed; monitor readback will show the reported value."
 
+    def _enclosure_angle_deg(head_power_w: float, target_w: float) -> float:
+        if head_power_w <= 0:
+            raise ValueError("measured head power must be above zero.")
+
+        target_w = finite_range(target_w, 0, head_power_w, "enclosure power")
+        ratio = target_w / head_power_w
+        return degrees(asin(sqrt(ratio))) / 2
+
+    @app.callback(
+        Output("enclosure-power-result", "children"),
+        Input("apply-enclosure-power", "n_clicks"),
+        State("enclosure-power-input", "value"),
+        prevent_initial_call=True,
+    )
+    def apply_enclosure_power(_clicks: int, value: object) -> str:
+        snapshot = service.snapshot()
+        samples = snapshot["history"]
+        sample = samples[-1] if samples else None
+        status = sample["status"] if sample else None
+        age_s = snapshot["age_s"]
+
+        if status is None or age_s is None:
+            return "Cannot set enclosure power: no valid laser-head power reading."
+        if age_s > max(5.0, 3 * snapshot["interval_s"] + 2 * status["duration_s"]):
+            return "Cannot set enclosure power: laser-head power reading is stale."
+
+        try:
+            head_power_w = finite_range(
+                status["power_w"], 0, float("inf"), "measured head power"
+            )
+            target_w = finite_range(value, 0, head_power_w, "enclosure power")
+            theta_deg = _enclosure_angle_deg(head_power_w, target_w)
+
+            stage = getattr(laser, "rotation_stage", None)
+            if stage is None:
+                stage = getattr(laser, "stage", None)
+
+            if stage is not None and hasattr(stage, "move_to_position"):
+                stage.move_to_position(theta_deg)
+
+            return (
+                f"Stage angle: {theta_deg:.2f}° "
+                f"(requested enclosure power {target_w:.3f} W)."
+            )
+        except (TypeError, ValueError, OSError, RuntimeError) as exc:
+            return f"Rejected / failed: {exc}"
+
     @app.callback(
         Output("control-result", "children"),
         Input("laser-start", "n_clicks"),
@@ -333,5 +571,39 @@ def create_app(service: Monitor) -> Any:
             return f"Command failed: {exc}"
 
         return "No control command selected."
+
+    def apply_enclosure_power(_clicks: int, value: object) -> str:
+            snapshot = service.snapshot()
+            samples = snapshot["history"]
+            sample = samples[-1] if samples else None
+            status = sample["status"] if sample else None
+            age_s = snapshot["age_s"]
+    
+            if status is None or age_s is None:
+                return "Cannot set enclosure power: no valid laser-head power reading."
+            if age_s > max(5.0, 3 * snapshot["interval_s"] + 2 * status["duration_s"]):
+                return "Cannot set enclosure power: laser-head power reading is stale."
+    
+            try:
+                head_power_w = finite_range(
+                    status["power_w"], 0, float("inf"), "measured head power"
+                )
+                target_w = finite_range(value, 0, head_power_w, "enclosure power")
+                theta_deg = _enclosure_angle_deg(head_power_w, target_w)
+
+                stage = getattr(laser, "rotation_stage", None)
+                if stage is None:
+                    stage = getattr(laser, "stage", None)
+
+                if stage is not None and hasattr(stage, "move_to_position"):
+                    stage.move_to_position(theta_deg)
+
+                return (
+                    f"Stage angle: {theta_deg:.2f}° "
+                    f"(requested enclosure power {target_w:.3f} W)."
+                )
+            except (TypeError, ValueError, OSError, RuntimeError) as exc:
+                return f"Rejected / failed: {exc}"
+    
 
     return app
