@@ -44,6 +44,7 @@ from threading import Event, Thread
 
 from coherent_verdi import VerdiController
 from coherent_verdi.gui import Monitor, Waveplate, create_app
+from coherent_verdi.hwp_calibration import HwpCalibration
 
 PORT = "COM6"
 MODEL = "V5"
@@ -52,9 +53,13 @@ HTTP_PORT = 8050
 
 HWP_SERIAL = "55543994"
 
+# Ideal sin^2 model (no offset/losses) until a measured calibration exists;
+# then: HwpCalibration.load("hwp_calibration.json").
+HWP_CALIBRATION = HwpCalibration()
+
 # Approved ceiling for this stage. The driver refuses any setpoint above this
 # value for the whole session, regardless of what's typed in the GUI.
-POWER_LIMIT_W = 0.05
+POWER_LIMIT_W = 5 # Watts
 
 # Verified via check_fault_clear_reply.py and confirmed against the front panel
 # with the operator on 2026-09-30. Do not change without repeating that check.
@@ -68,11 +73,12 @@ def open_waveplate() -> Waveplate:
     try:
         from coherent_verdi.k10cr2_driver import K10CR2  # needs thorlabs_kinesis
 
-        return Waveplate(K10CR2(HWP_SERIAL))
+        stage = K10CR2(HWP_SERIAL, calibration=HWP_CALIBRATION)
+        return Waveplate(stage, calibration=HWP_CALIBRATION)
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}".rstrip()
         print(f"WARNING: half-waveplate {HWP_SERIAL} not connected -- {error}")
-        return Waveplate(None, connect_error=error)
+        return Waveplate(None, connect_error=error, calibration=HWP_CALIBRATION)
 
 
 with VerdiController(
