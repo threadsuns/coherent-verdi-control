@@ -268,7 +268,7 @@ def create_app(service: Monitor, waveplate: Waveplate | None = None) -> Any:
         [
             html.Header(
                 [
-                    html.H1("Verdi / Telemetry"),
+                    html.H1("NanoNMR-M Verdi V5 Laser Controller"),
                     html.Div(
                         _source_label(service.snapshot()["simulated"]),
                         id="source",
